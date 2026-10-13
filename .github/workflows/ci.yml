@@ -1,0 +1,37 @@
+name: CI
+
+# No untrusted event inputs are interpolated into shell commands.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Vet + tests + licences
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go vet
+        run: go vet ./...
+      - name: go test (race)
+        run: go test -race -count=1 ./...
+      - name: Licence header on every Go file
+        run: |
+          missing="$(grep -L 'SPDX-License-Identifier: Apache-2.0' $(git ls-files '*.go') || true)"
+          if [ -n "$missing" ]; then echo "missing Apache-2.0 header:"; echo "$missing"; exit 1; fi
+      - name: Dependency licences are permissive
+        # This module is Apache-2.0 and is linked into applications of any licence:
+        # a copyleft dependency here would defeat the reason it is separate.
+        run: |
+          go run github.com/google/go-licenses/v2@v2.0.1 check ./... \
+            --allowed_licenses=Apache-2.0,MIT,BSD-2-Clause,BSD-3-Clause,ISC

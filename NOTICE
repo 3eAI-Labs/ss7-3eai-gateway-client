@@ -1,0 +1,9 @@
+ss7-3eai-gateway-client
+Copyright 2026 3eAI Labs Ltd
+
+This product includes software developed at 3eAI Labs Ltd (https://3eai-labs.com/).
+Licensed under the Apache License 2.0 — see the LICENSE file.
+
+This product does not bundle third-party code. Its Go module dependencies
+(github.com/nats-io/nats.go, github.com/google/uuid) are resolved by the Go
+toolchain and carry their own licences.

@@ -1,0 +1,39 @@
+name: Bug report
+description: Something does not behave as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not report security vulnerabilities here — use
+        [private vulnerability reporting](https://github.com/3eAI-Labs/ss7-3eai-gateway-client/security/advisories/new)
+        instead. Do not paste real subscriber identities (IMSI, MSISDN).
+
+  - type: input
+    id: version
+    attributes:
+      label: Client module version
+      placeholder: "v0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: gateway
+    attributes:
+      label: Gateway version
+      description: Container image tag of ss7-3eai-gateway.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: A failing test is the fastest route to a fix.
+    validations:
+      required: true
