@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package ss7client is the NATS client for ss7-3eai-gateway: the subjects, the
-// message schema and a typed request/response client for the MAP SMS path.
+// message schema and a typed request/response client for the MAP interfaces
+// the gateway implements.
 //
 // This module is licensed under the Apache License 2.0, separately from the
 // gateway server (AGPL-3.0-only), so an SMSC or any other application can link
@@ -20,6 +21,12 @@
 //     [SubjectMTSMSRequest] → [SubjectMTSMSResponse].
 //   - MO-Forward-SM (MAP op 46), gateway → application: [Client.SubscribeMO],
 //     subject [SubjectMOSMS].
+//   - AnyTimeInterrogation (MAP op 71) towards the HLR:
+//     [Client.AnyTimeInterrogation], subjects [SubjectATIRequest] →
+//     [SubjectATIResponse].
+//   - ProvideSubscriberInfo (MAP op 70) towards the VLR:
+//     [Client.ProvideSubscriberInfo], subjects [SubjectPSIRequest] →
+//     [SubjectPSIResponse].
 //
 // # Wire model
 //
@@ -30,8 +37,10 @@
 // every client instance receives every response and keeps only its own, by
 // correlation_id.
 //
-// A request the gateway rejects before starting a dialogue (missing field,
-// undecodable JSON) produces no response today; the caller only sees its own
-// deadline. [Client] therefore validates the fields the gateway requires
-// before publishing, and applies a default deadline when the context has none.
+// A request the gateway refuses before starting a dialogue — a missing or
+// invalid field, no capacity for a new dialogue — is answered with
+// [StatusRejected] from gateway 0.7.4 on; earlier gateways send nothing, and
+// nothing can be sent for a request that is not valid JSON. [Client]
+// therefore validates the fields the gateway requires before publishing, and
+// applies a default deadline when the context has none.
 package ss7client

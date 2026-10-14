@@ -12,13 +12,16 @@ go get github.com/3eAI-Labs/ss7-3eai-gateway-client
 
 ## What it covers
 
-The interface the gateway implements end to end — the MAP short-message path:
+The interfaces the gateway implements end to end — the MAP short-message path and subscriber
+location and state:
 
 | Operation | Method | Subjects |
 |-----------|--------|----------|
 | SendRoutingInfoForSM (MAP op 45) | `SendRoutingInfoForSM` | `map.sri.request` → `map.sri.response` |
 | MT-ForwardSM (MAP op 44) | `MTForwardSM` | `map.mt.sms.request` → `map.mt.sms.response` |
 | MO-ForwardSM (MAP op 46), received from a foreign MSC | `SubscribeMO` | `map.mo.sms` |
+| AnyTimeInterrogation (MAP op 71), towards the HLR | `AnyTimeInterrogation` | `map.ati.request` → `map.ati.response` |
+| ProvideSubscriberInfo (MAP op 70), towards the VLR | `ProvideSubscriberInfo` | `map.psi.request` → `map.psi.response` |
 
 The package also defines the `Message` JSON schema, parameter keys, status values and the
 gateway's failure codes — the contract for consumers in other languages.
@@ -50,6 +53,12 @@ _, err = gw.MTForwardSM(ctx, ss7client.MTRequest{
 sub, err := gw.SubscribeMO("smsc", func(m *ss7client.Message) {
 	// m.Sender: originating MSC, m.Recipient: SMSC address, m.PayloadData: SMS-SUBMIT TPDU
 })
+
+loc, err := gw.AnyTimeInterrogation(ctx, ss7client.ATIRequest{
+	MSISDN:    "905321112233",
+	Requested: ss7client.RequestedInfo{Location: true, State: true},
+})
+// loc.Info.Location.CellGlobalID, loc.Info.Location.VLRNumber, loc.Info.State.State, …
 ```
 
 ## Behaviour worth knowing
@@ -61,11 +70,13 @@ sub, err := gw.SubscribeMO("smsc", func(m *ss7client.Message) {
     (`MAPErrAbsentSubscriberSM`, `MAPErrUnknownSubscriber`, …), `Message` its name — the input to
     an SMSC's retry decision;
   - a TCAP Reject → `REMOTE_ERROR` with `ErrCodeRemoteError`;
-  - the dialogue timed out or was aborted → `TIMEOUT` / `ABORTED` with a negative `Code`.
+  - the dialogue timed out or was aborted → `TIMEOUT` / `ABORTED` with a negative `Code`;
+  - the gateway refused the request before starting a dialogue → `REJECTED` with
+    `ErrCodeRejected` and the reason (gateway 0.7.4 and later).
 
   Any status the client does not recognise is treated as a failure, never as success.
-- **Deadlines.** The gateway sends no response for a request it rejects before starting a
-  dialogue. The client checks the fields the gateway requires before publishing, and bounds a
+- **Deadlines.** Gateways before 0.7.4 send no response for a request they reject before starting
+  a dialogue, and no gateway can answer a request that is not valid JSON. The client checks the fields the gateway requires before publishing, and bounds a
   request without a context deadline by `DefaultTimeout` (40s, longer than the gateway's default
   30s TCAP dialogue timeout).
 - **MO delivery** is a plain NATS publish: an MO-ForwardSM published while no subscriber is

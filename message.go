@@ -68,6 +68,11 @@ type Message struct {
 	ServiceKey uint32 `json:"service_key,omitempty"`
 	EventType  string `json:"event_type,omitempty"`
 
+	// Location interface (map.ati.*, map.psi.*): what a request asks for
+	// and what the answer carries.
+	RequestedInfo  *RequestedInfo  `json:"requested_info,omitempty"`
+	SubscriberInfo *SubscriberInfo `json:"subscriber_info,omitempty"`
+
 	Status       string `json:"status,omitempty"`
 	ErrorCode    int32  `json:"error_code,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`
@@ -95,12 +100,17 @@ const (
 // Values of Message.Status on response subjects.
 const (
 	// StatusDelivered: MT-Forward-SM ended with a ReturnResult. A successful
-	// SRI-for-SM response carries an empty status.
+	// SRI-for-SM, AnyTimeInterrogation or ProvideSubscriberInfo response
+	// carries an empty status.
 	StatusDelivered = "DELIVERED"
 	// StatusTimeout: the gateway's TCAP dialogue timer expired.
 	StatusTimeout = "TIMEOUT"
 	// StatusAborted: the peer aborted the dialogue (TC-P-ABORT / TC-U-ABORT).
 	StatusAborted = "ABORTED"
+	// StatusRejected: the gateway refused the request before starting a
+	// dialogue — a missing or invalid field, or no capacity for a new
+	// dialogue. ErrorCode is ErrCodeRejected and ErrorMessage the reason.
+	StatusRejected = "REJECTED"
 	// StatusRemoteError: the peer answered with a MAP ReturnError — ErrorCode
 	// is the MAP error code (positive, see MAPErr*) and ErrorMessage its name —
 	// or with a TCAP Reject / a ReturnError without a code — ErrorCode is
@@ -114,6 +124,7 @@ const (
 	ErrCodeTimeout      int32 = -1
 	ErrCodeAborted      int32 = -2
 	ErrCodeRemoteError  int32 = -3
+	ErrCodeRejected     int32 = -4
 	ErrCodeUnclassified int32 = -99
 )
 
@@ -139,8 +150,10 @@ const (
 
 // AddressString is the object form of an address parameter. Nature and
 // NumberingPlan are the TS 29.002 AddressString nature-of-address and
-// numbering-plan indicators; a bare digit string in Parameters means
-// international (4) / ISDN-E.164 (1).
+// numbering-plan indicators, coded as there: Nature 1 = international,
+// 2 = national significant, 4 = subscriber number (not the SCCP global
+// title coding, where international is 4); NumberingPlan 1 = ISDN/E.164.
+// A bare digit string in Parameters means international / ISDN-E.164.
 type AddressString struct {
 	Digits        string `json:"digits"`
 	Nature        uint8  `json:"nature"`
@@ -149,5 +162,5 @@ type AddressString struct {
 
 // E164 returns an international ISDN/E.164 AddressString.
 func E164(digits string) AddressString {
-	return AddressString{Digits: digits, Nature: 4, NumberingPlan: 1}
+	return AddressString{Digits: digits, Nature: 1, NumberingPlan: 1}
 }

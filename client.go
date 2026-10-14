@@ -58,7 +58,7 @@ func WithDecodeErrorHandler(f func(subject string, data []byte, err error)) Opti
 	return func(c *Client) { c.onDecodeError = f }
 }
 
-// Client sends MAP SMS requests to the gateway and matches the responses by
+// Client sends MAP requests to the gateway and matches the responses by
 // correlation ID. It is safe for concurrent use. It does not own the NATS
 // connection: Close releases the client's subscriptions only.
 type Client struct {
@@ -86,7 +86,7 @@ func New(nc *nats.Conn, opts ...Option) (*Client, error) {
 	for _, o := range opts {
 		o(c)
 	}
-	for _, subject := range []string{SubjectSRIResponse, SubjectMTSMSResponse} {
+	for _, subject := range []string{SubjectSRIResponse, SubjectMTSMSResponse, SubjectATIResponse, SubjectPSIResponse} {
 		sub, err := nc.Subscribe(subject, c.onResponse)
 		if err != nil {
 			c.unsubscribe()
@@ -205,8 +205,8 @@ func (c *Client) request(ctx context.Context, subject string, msg *Message) (*Me
 	}
 }
 
-// isFailure treats any status other than empty (SRI success) or DELIVERED
-// (MT success) as a failure, so a status this client does not know yet is
+// isFailure treats any status other than empty (success of an interrogation:
+// SRI, ATI, PSI) or DELIVERED (MT success) as a failure, so a status this client does not know yet is
 // never reported as success.
 func isFailure(m *Message) bool {
 	if m.ErrorCode != 0 || m.ErrorMessage != "" {

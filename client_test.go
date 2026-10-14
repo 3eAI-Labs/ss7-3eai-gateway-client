@@ -98,7 +98,7 @@ func TestSendRoutingInfoForSM_Success(t *testing.T) {
 			t.Errorf("HLR override: gt=%q dpc=%#x", req.GlobalTitle, req.DPC)
 		}
 		sca := addressParam(t, req, ParamServiceCentreAddress)
-		if sca["digits"] != "905001112233" || sca["nature"] != float64(4) || sca["numbering_plan"] != float64(1) {
+		if sca["digits"] != "905001112233" || sca["nature"] != float64(1) || sca["numbering_plan"] != float64(1) {
 			t.Errorf("service_centre_address = %v", sca)
 		}
 		return &Message{
