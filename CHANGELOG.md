@@ -6,6 +6,43 @@ versioning follows [SemVer](https://semver.org/) (pre-1.0: any 0.x change may be
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-14
+
+### Added
+
+- Call routing: `SendRoutingInfo` (MAP op 22, a basic call interrogation towards the HLR, the
+  gateway as GMSC) on `map.routing.request` → `map.routing.response`. Needs gateway 0.7.6 or later;
+  an older gateway leaves the request unanswered until the deadline. The subjects are outside
+  `map.sri.*`, so NATS permissions can grant SRI-for-SM without call routing.
+  - `RoutingRequest` takes the MSISDN and, optionally, the HLR's address. The GMSC address is the
+    gateway's own; the gateway ignores every other request field.
+  - The answer carries `routing_info` with the roaming number, forwarding data and CAMEL routing
+    information. The roaming number and forwarded-to number are `AddressString` objects.
+    Forwarding options are decoded.
+  - `routing_info` also carries the VMSC address, basic MSISDN, number portability status, basic
+    service and active SS codes.
+  - The IMSI is in `imsi`, and any location or state is in `subscriber_info`.
+- MAP error codes SendRoutingInfo adds:
+
+  | Constant | Code |
+  |---|---|
+  | `MAPErrBearerServiceNotProvisioned` | 10 |
+  | `MAPErrForwardingViolation` | 14 |
+  | `MAPErrCUGReject` | 15 |
+  | `MAPErrAbsentSubscriber` | 27 |
+  | `MAPErrNumberChanged` | 44 |
+  | `MAPErrBusySubscriber` | 45 |
+  | `MAPErrNoSubscriberReply` | 46 |
+  | `MAPErrORNotAllowed` | 48 |
+
+### Changed
+
+- `New` no longer subscribes to every response subject up front. A request subscribes to its own
+  operation's response subject the first time that operation is used. An account limited to some
+  operations therefore no longer gets permission violations for the others.
+- AnyTimeInterrogation's MSISDN and ProvideSubscriberInfo's VLR number are limited to 16 digits,
+  the most an ISDN-AddressString holds. SendRoutingInfo's MSISDN has the same limit.
+
 ## [0.2.0] - 2026-10-14
 
 ### Added

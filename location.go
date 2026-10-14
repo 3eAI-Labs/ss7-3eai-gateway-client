@@ -254,6 +254,9 @@ func (c *Client) AnyTimeInterrogation(ctx context.Context, req ATIRequest) (*Sub
 	}); err != nil {
 		return nil, err
 	}
+	if err := checkISDNLength("ATI", "MSISDN", req.MSISDN); err != nil {
+		return nil, err
+	}
 	if err := req.Requested.validate("ATI"); err != nil {
 		return nil, err
 	}
@@ -288,6 +291,9 @@ func (c *Client) ProvideSubscriberInfo(ctx context.Context, req PSIRequest) (*Su
 	if err := checkDigits("PSI", map[string]string{"IMSI": req.IMSI, "VLRNumber": req.VLRNumber.Digits}); err != nil {
 		return nil, err
 	}
+	if err := checkISDNLength("PSI", "VLRNumber", req.VLRNumber.Digits); err != nil {
+		return nil, err
+	}
 	if err := req.Requested.validate("PSI"); err != nil {
 		return nil, err
 	}
@@ -315,6 +321,18 @@ func checkDigits(op string, fields map[string]string) error {
 				return fmt.Errorf("%w: %s: %s %q is not decimal digits", ErrInvalidRequest, op, name, v)
 			}
 		}
+	}
+	return nil
+}
+
+// maxISDNDigits is the most digits an ISDN-AddressString holds: 9 octets
+// (TS 29.002 maxISDN-AddressLength), one of them the nature and numbering
+// plan, two digits to each of the others.
+const maxISDNDigits = 16
+
+func checkISDNLength(op, name, digits string) error {
+	if len(digits) > maxISDNDigits {
+		return fmt.Errorf("%w: %s: %s has %d digits, at most %d", ErrInvalidRequest, op, name, len(digits), maxISDNDigits)
 	}
 	return nil
 }

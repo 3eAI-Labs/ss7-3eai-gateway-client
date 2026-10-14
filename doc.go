@@ -27,6 +27,9 @@
 //   - ProvideSubscriberInfo (MAP op 70) towards the VLR:
 //     [Client.ProvideSubscriberInfo], subjects [SubjectPSIRequest] →
 //     [SubjectPSIResponse].
+//   - SendRoutingInfo (MAP op 22) towards the HLR, the gateway as GMSC
+//     (gateway 0.7.6 and later): [Client.SendRoutingInfo], subjects
+//     [SubjectRoutingRequest] → [SubjectRoutingResponse].
 //
 // # Wire model
 //
@@ -35,7 +38,8 @@
 // publishes the outcome — result or failure — on the matching response
 // subject with the request's correlation_id. Response subjects are broadcast:
 // every client instance receives every response and keeps only its own, by
-// correlation_id.
+// correlation_id. A [Client] subscribes to a response subject on the first
+// request that needs it.
 //
 // A request the gateway refuses before starting a dialogue — a missing or
 // invalid field, no capacity for a new dialogue — is answered with

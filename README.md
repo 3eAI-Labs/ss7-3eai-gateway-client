@@ -12,8 +12,8 @@ go get github.com/3eAI-Labs/ss7-3eai-gateway-client
 
 ## What it covers
 
-The interfaces the gateway implements end to end — the MAP short-message path and subscriber
-location and state:
+The interfaces the gateway implements end to end — the MAP short-message path, subscriber
+location and state, and call routing:
 
 | Operation | Method | Subjects |
 |-----------|--------|----------|
@@ -22,6 +22,7 @@ location and state:
 | MO-ForwardSM (MAP op 46), received from a foreign MSC | `SubscribeMO` | `map.mo.sms` |
 | AnyTimeInterrogation (MAP op 71), towards the HLR | `AnyTimeInterrogation` | `map.ati.request` → `map.ati.response` |
 | ProvideSubscriberInfo (MAP op 70), towards the VLR | `ProvideSubscriberInfo` | `map.psi.request` → `map.psi.response` |
+| SendRoutingInfo (MAP op 22), towards the HLR, as GMSC — gateway 0.7.6 and later | `SendRoutingInfo` | `map.routing.request` → `map.routing.response` |
 
 The package also defines the `Message` JSON schema, parameter keys, status values and the
 gateway's failure codes — the contract for consumers in other languages.
@@ -59,6 +60,9 @@ loc, err := gw.AnyTimeInterrogation(ctx, ss7client.ATIRequest{
 	Requested: ss7client.RequestedInfo{Location: true, State: true},
 })
 // loc.Info.Location.CellGlobalID, loc.Info.Location.VLRNumber, loc.Info.State.State, …
+
+route, err := gw.SendRoutingInfo(ctx, ss7client.RoutingRequest{MSISDN: "905321112233"})
+// route.Routing.RoamingNumber.Digits (MSRN), route.Routing.Forwarding, route.Routing.VMSCAddress, route.IMSI
 ```
 
 ## Behaviour worth knowing
@@ -79,6 +83,16 @@ loc, err := gw.AnyTimeInterrogation(ctx, ss7client.ATIRequest{
   a dialogue, and no gateway can answer a request that is not valid JSON. The client checks the fields the gateway requires before publishing, and bounds a
   request without a context deadline by `DefaultTimeout` (40s, longer than the gateway's default
   30s TCAP dialogue timeout).
+- **Access.** AnyTimeInterrogation, ProvideSubscriberInfo and SendRoutingInfo return the IMSI,
+  serving node or location of any subscriber they are asked about.
+  - Grant publish rights on `map.ati.request`, `map.psi.request` and `map.routing.request` only
+    to the applications that need them. The call routing subjects are outside `map.sri.*`, so
+    granting SRI-for-SM does not grant them; a grant of `map.*.request` or `map.>` does.
+  - Response subjects are broadcast. Subscribe rights on `map.ati.response`, `map.psi.response`
+    or `map.routing.response` show every answer, every requester's — IMSIs, locations,
+    roaming numbers.
+  - A `Client` subscribes to an operation's response subject on its first request of that
+    operation, so an account limited to some operations works.
 - **MO delivery** is a plain NATS publish: an MO-ForwardSM published while no subscriber is
   connected is lost. Use a queue group to share the stream across instances.
 

@@ -69,9 +69,15 @@ type Message struct {
 	EventType  string `json:"event_type,omitempty"`
 
 	// Location interface (map.ati.*, map.psi.*): what a request asks for
-	// and what the answer carries.
+	// and what the answer carries. SubscriberInfo is also in a call routing
+	// answer when the HLR returns the subscriber's location or state.
 	RequestedInfo  *RequestedInfo  `json:"requested_info,omitempty"`
 	SubscriberInfo *SubscriberInfo `json:"subscriber_info,omitempty"`
+
+	// Call routing (map.routing.*): the answer's routing information. The
+	// answer's IMSI is in IMSI, its location and state, if any, in
+	// SubscriberInfo.
+	RoutingInfo *RoutingInfo `json:"routing_info,omitempty"`
 
 	Status       string `json:"status,omitempty"`
 	ErrorCode    int32  `json:"error_code,omitempty"`
@@ -100,8 +106,8 @@ const (
 // Values of Message.Status on response subjects.
 const (
 	// StatusDelivered: MT-Forward-SM ended with a ReturnResult. A successful
-	// SRI-for-SM, AnyTimeInterrogation or ProvideSubscriberInfo response
-	// carries an empty status.
+	// SRI-for-SM, AnyTimeInterrogation, ProvideSubscriberInfo or
+	// SendRoutingInfo response carries an empty status.
 	StatusDelivered = "DELIVERED"
 	// StatusTimeout: the gateway's TCAP dialogue timer expired.
 	StatusTimeout = "TIMEOUT"

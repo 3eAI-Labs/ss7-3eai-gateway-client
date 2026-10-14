@@ -449,3 +449,35 @@ func TestMessageWireFieldNames(t *testing.T) {
 		t.Fatalf("wire format changed:\n got %s\nwant %s", data, want)
 	}
 }
+
+// New subscribes to nothing; a request subscribes to its own response
+// subject only, so an account allowed some operations works without the
+// others' subjects.
+func TestSubscribesPerOperation(t *testing.T) {
+	nc := startNATS(t)
+	c := newClient(t, nc)
+	if n := nc.NumSubscriptions(); n != 0 {
+		t.Fatalf("New left %d subscriptions, want 0", n)
+	}
+	fakeGateway(t, nc, SubjectRoutingRequest, SubjectRoutingResponse, func(*Message) *Message {
+		return &Message{MessageType: MsgTypeMAPRouting, RoutingInfo: &RoutingInfo{}}
+	})
+	before := nc.NumSubscriptions()
+	for i := 0; i < 2; i++ {
+		if _, err := c.SendRoutingInfo(context.Background(), RoutingRequest{MSISDN: "1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := nc.NumSubscriptions() - before; n != 1 {
+		t.Fatalf("two routing requests added %d subscriptions, want 1", n)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if n := nc.NumSubscriptions() - before; n != 0 {
+		t.Fatalf("Close left %d subscriptions", n)
+	}
+	if _, err := c.SendRoutingInfo(context.Background(), RoutingRequest{MSISDN: "1"}); !errors.Is(err, ErrClosed) {
+		t.Fatalf("request after Close: %v", err)
+	}
+}

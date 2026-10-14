@@ -66,14 +66,21 @@ type Client struct {
 	defaultTimeout time.Duration
 	onDecodeError  func(subject string, data []byte, err error)
 
-	subs []*nats.Subscription
+	// subMu serialises subscribing; subs maps each response subject this
+	// client has subscribed to, on the first request that needs it.
+	subMu sync.Mutex
+	subs  map[string]*nats.Subscription
 
 	mu      sync.Mutex
 	closed  bool
 	pending map[string]chan *Message
 }
 
-// New subscribes to the response subjects and returns a ready Client.
+// New returns a Client. It subscribes to an operation's response subject
+// on the first request of that operation, not before, so that an
+// application whose NATS account may use only some operations — the SMS
+// subjects but not call routing, say — does not trip a permission violation
+// on the others.
 func New(nc *nats.Conn, opts ...Option) (*Client, error) {
 	if nc == nil {
 		return nil, errors.New("ss7 client: nil NATS connection")
@@ -82,25 +89,48 @@ func New(nc *nats.Conn, opts ...Option) (*Client, error) {
 		nc:             nc,
 		defaultTimeout: DefaultTimeout,
 		pending:        make(map[string]chan *Message),
+		subs:           make(map[string]*nats.Subscription),
 	}
 	for _, o := range opts {
 		o(c)
 	}
-	for _, subject := range []string{SubjectSRIResponse, SubjectMTSMSResponse, SubjectATIResponse, SubjectPSIResponse} {
-		sub, err := nc.Subscribe(subject, c.onResponse)
-		if err != nil {
-			c.unsubscribe()
-			return nil, fmt.Errorf("ss7 client: subscribe %s: %w", subject, err)
-		}
-		c.subs = append(c.subs, sub)
-	}
-	// The server must have the subscriptions before the first request goes
-	// out, or a fast response could pass us by.
-	if err := nc.Flush(); err != nil {
-		c.unsubscribe()
-		return nil, fmt.Errorf("ss7 client: flush: %w", err)
-	}
 	return c, nil
+}
+
+// responseSubject maps a request subject to the subject its answer comes on.
+var responseSubject = map[string]string{
+	SubjectSRIRequest:     SubjectSRIResponse,
+	SubjectMTSMSRequest:   SubjectMTSMSResponse,
+	SubjectATIRequest:     SubjectATIResponse,
+	SubjectPSIRequest:     SubjectPSIResponse,
+	SubjectRoutingRequest: SubjectRoutingResponse,
+}
+
+// subscribe makes sure the client receives subject. The server must have
+// the subscription before the first request goes out, or a fast response
+// could pass it by: hence the Flush.
+func (c *Client) subscribe(subject string) error {
+	c.subMu.Lock()
+	defer c.subMu.Unlock()
+	c.mu.Lock()
+	closed := c.closed
+	c.mu.Unlock()
+	if closed {
+		return ErrClosed
+	}
+	if _, ok := c.subs[subject]; ok {
+		return nil
+	}
+	sub, err := c.nc.Subscribe(subject, c.onResponse)
+	if err != nil {
+		return fmt.Errorf("ss7 client: subscribe %s: %w", subject, err)
+	}
+	if err := c.nc.Flush(); err != nil {
+		_ = sub.Unsubscribe()
+		return fmt.Errorf("ss7 client: flush: %w", err)
+	}
+	c.subs[subject] = sub
+	return nil
 }
 
 // Close unsubscribes and fails every pending request with ErrClosed.
@@ -120,13 +150,15 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) unsubscribe() error {
+	c.subMu.Lock()
+	defer c.subMu.Unlock()
 	var errs []error
-	for _, s := range c.subs {
+	for subject, s := range c.subs {
 		if err := s.Unsubscribe(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
 			errs = append(errs, err)
 		}
+		delete(c.subs, subject)
 	}
-	c.subs = nil
 	return errors.Join(errs...)
 }
 
@@ -156,6 +188,10 @@ func (c *Client) request(ctx context.Context, subject string, msg *Message) (*Me
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.defaultTimeout)
 		defer cancel()
+	}
+
+	if err := c.subscribe(responseSubject[subject]); err != nil {
+		return nil, err
 	}
 
 	msg.MessageID = uuid.NewString()
