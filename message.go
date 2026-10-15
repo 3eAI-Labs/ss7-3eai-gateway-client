@@ -79,6 +79,9 @@ type Message struct {
 	// SubscriberInfo.
 	RoutingInfo *RoutingInfo `json:"routing_info,omitempty"`
 
+	// USSD (map.ussd.*): the session, the action, and the text.
+	USSD *USSD `json:"ussd,omitempty"`
+
 	Status       string `json:"status,omitempty"`
 	ErrorCode    int32  `json:"error_code,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`

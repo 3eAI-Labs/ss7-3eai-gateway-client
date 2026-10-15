@@ -6,6 +6,42 @@ versioning follows [SemVer](https://semver.org/) (pre-1.0: any 0.x change may be
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-15
+
+### Added
+
+- USSD sessions (TS 29.002 §11.9), with the gateway as gsmSCF; needs gateway 0.7.7 or later.
+  - **Subscriber-initiated:** a `begin` event on `map.ussd.event.<route>` (`SubscribeUSSD`). The
+    route is the one the dialled string matches in the gateway's `map.ussd_routes`, else
+    `default`. The application then:
+    - prompts with `USSDRequest`, which returns the reply; an empty reply is allowed;
+    - shows text with `USSDNotify`;
+    - ends with `USSDRelease` and the final text, or `USSDReject` and a MAP error that
+      processUnstructuredSS-Request allows.
+  - **Network-initiated:** `StartUSSD` on `map.ussd.start`. The same commands continue it, and
+    `USSDRelease` without text ends it.
+  - **Endings:** every session ends exactly once, and the gateway publishes one `end` event for it
+    on its route, whoever ended it. Status and code say how; a failed command reports the same
+    ending as an error. Core NATS delivers at most once, so keep a timeout of your own per
+    session; a reply the gateway cannot publish ends its session (`ABORTED`).
+  - **Commands** go to every node on `map.ussd.command`; the node holding the session acts. That
+    node answers `REJECTED` to a command it cannot carry out: an unknown or ended session, a
+    request or notify while another is outstanding, or the wrong release or reject for the
+    session's kind. A release or reject is carried out with a request or notify outstanding,
+    which then fails with `ABORTED`.
+    Session IDs are opaque and unguessable, at most 64 characters.
+  - **Text** is encoded by the gateway: GSM 7-bit when it fits the default alphabet, else UCS2.
+    Alternatively the application gives the DCS and data (base64 in JSON). Answers carry DCS,
+    data and the decoded text.
+  - **Wire format:** Message field `ussd`; the reject code travels in `ussd.error`, so `error_code`
+    stays response-only.
+  - **Timeouts:** USSD calls without a deadline get `DefaultUSSDTimeout` (3 min 10 s;
+    `WithUSSDTimeout`), not the 40 s of the other operations. After a deadline the session may still
+    be open. The gateway's `map.ussd_session_timeout` (1–10 min, default 180 s) bounds each wait.
+  - **Begins** are delivered even when the string cannot be read: `Message` nil, or `Message.Text`
+    empty with `Detail` saying why.
+  - **New MAP error codes:** `MAPErrUnknownAlphabet` (71), `MAPErrUSSDBusy` (72).
+
 ## [0.3.0] - 2026-10-14
 
 ### Added

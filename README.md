@@ -23,6 +23,7 @@ location and state, and call routing:
 | AnyTimeInterrogation (MAP op 71), towards the HLR | `AnyTimeInterrogation` | `map.ati.request` → `map.ati.response` |
 | ProvideSubscriberInfo (MAP op 70), towards the VLR | `ProvideSubscriberInfo` | `map.psi.request` → `map.psi.response` |
 | SendRoutingInfo (MAP op 22), towards the HLR, as GMSC — gateway 0.7.6 and later | `SendRoutingInfo` | `map.routing.request` → `map.routing.response` |
+| USSD sessions (MAP ops 59, 60, 61), as gsmSCF — gateway 0.7.7 and later | `SubscribeUSSD`, `StartUSSD`, `USSDRequest`, `USSDNotify`, `USSDRelease`, `USSDReject` | events on `map.ussd.event.<route>`; `map.ussd.start` / `map.ussd.command` → `map.ussd.response` |
 
 The package also defines the `Message` JSON schema, parameter keys, status values and the
 gateway's failure codes — the contract for consumers in other languages.
@@ -63,6 +64,24 @@ loc, err := gw.AnyTimeInterrogation(ctx, ss7client.ATIRequest{
 
 route, err := gw.SendRoutingInfo(ctx, ss7client.RoutingRequest{MSISDN: "905321112233"})
 // route.Routing.RoamingNumber.Digits (MSRN), route.Routing.Forwarding, route.Routing.VMSCAddress, route.IMSI
+
+// USSD: a menu for whoever dials a code routed to "balance" (map.ussd_routes).
+gw.SubscribeUSSD("balance", "balance-app", func(e *ss7client.USSDEvent) {
+	if e.Action != ss7client.USSDBegin {
+		return // an end: e.Status and e.Detail say how the session ended
+	}
+	go func() { // never wait for a human on the subscription's goroutine
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		a, err := gw.USSDRequest(ctx, e.SessionID, ss7client.USSDText{Text: "1 Balance\n2 Offers"})
+		if err != nil {
+			// The session may still be open: end it, on a fresh context.
+			_ = gw.USSDReject(context.Background(), e.SessionID, ss7client.MAPErrSystemFailure)
+			return
+		}
+		_ = gw.USSDRelease(ctx, e.SessionID, &ss7client.USSDText{Text: "You chose " + a.Reply.Text})
+	}()
+})
 ```
 
 ## Behaviour worth knowing
@@ -84,13 +103,24 @@ route, err := gw.SendRoutingInfo(ctx, ss7client.RoutingRequest{MSISDN: "90532111
   request without a context deadline by `DefaultTimeout` (40s, longer than the gateway's default
   30s TCAP dialogue timeout).
 - **Access.** AnyTimeInterrogation, ProvideSubscriberInfo and SendRoutingInfo return the IMSI,
-  serving node or location of any subscriber they are asked about.
-  - Grant publish rights on `map.ati.request`, `map.psi.request` and `map.routing.request` only
-    to the applications that need them. The call routing subjects are outside `map.sri.*`, so
-    granting SRI-for-SM does not grant them; a grant of `map.*.request` or `map.>` does.
-  - Response subjects are broadcast. Subscribe rights on `map.ati.response`, `map.psi.response`
-    or `map.routing.response` show every answer, every requester's — IMSIs, locations,
-    roaming numbers.
+  serving node or location of any subscriber they are asked about; USSD puts text on any handset
+  and reads what subscribers type.
+  - Grant publish rights only to the applications that need them:
+    - `map.ati.request`, `map.psi.request`, `map.routing.request`;
+    - `map.ussd.start` (text on any handset, unasked);
+    - `map.ussd.command` (acts on any live session whose ID it holds).
+
+    The call routing subjects are outside `map.sri.*`, so granting SRI-for-SM does not grant them.
+    A grant of `map.*.request` or `map.>` does.
+  - Response and event subjects are broadcast. Subscribe rights show every answer, from every
+    requester:
+    - `map.ati.response`, `map.psi.response` and `map.routing.response` carry IMSIs, locations and
+      roaming numbers;
+    - `map.ussd.response` carries what subscribers type, PINs included;
+    - `map.ussd.event.<route>` carries who dialled what.
+
+    Grant each USSD route only to the application that serves it.
+  - `WithDecodeErrorHandler` receives raw payloads, USSD text included.
   - A `Client` subscribes to an operation's response subject on its first request of that
     operation, so an account limited to some operations works.
 - **MO delivery** is a plain NATS publish: an MO-ForwardSM published while no subscriber is

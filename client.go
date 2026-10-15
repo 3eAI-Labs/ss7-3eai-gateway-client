@@ -64,6 +64,7 @@ func WithDecodeErrorHandler(f func(subject string, data []byte, err error)) Opti
 type Client struct {
 	nc             *nats.Conn
 	defaultTimeout time.Duration
+	ussdTimeout    time.Duration
 	onDecodeError  func(subject string, data []byte, err error)
 
 	// subMu serialises subscribing; subs maps each response subject this
@@ -88,6 +89,7 @@ func New(nc *nats.Conn, opts ...Option) (*Client, error) {
 	c := &Client{
 		nc:             nc,
 		defaultTimeout: DefaultTimeout,
+		ussdTimeout:    DefaultUSSDTimeout,
 		pending:        make(map[string]chan *Message),
 		subs:           make(map[string]*nats.Subscription),
 	}
@@ -104,6 +106,8 @@ var responseSubject = map[string]string{
 	SubjectATIRequest:     SubjectATIResponse,
 	SubjectPSIRequest:     SubjectPSIResponse,
 	SubjectRoutingRequest: SubjectRoutingResponse,
+	SubjectUSSDStart:      SubjectUSSDResponse,
+	SubjectUSSDCommand:    SubjectUSSDResponse,
 }
 
 // subscribe makes sure the client receives subject. The server must have

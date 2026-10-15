@@ -30,6 +30,11 @@
 //   - SendRoutingInfo (MAP op 22) towards the HLR, the gateway as GMSC
 //     (gateway 0.7.6 and later): [Client.SendRoutingInfo], subjects
 //     [SubjectRoutingRequest] → [SubjectRoutingResponse].
+//   - USSD sessions (MAP ops 59, 60, 61; gateway 0.7.7 and later), the
+//     gateway as gsmSCF: subscriber-initiated ones arrive on their route
+//     through [Client.SubscribeUSSD]; [Client.StartUSSD] starts a
+//     network-initiated one; [Client.USSDRequest], [Client.USSDNotify],
+//     [Client.USSDRelease] and [Client.USSDReject] act on a session by its ID.
 //
 // # Wire model
 //
