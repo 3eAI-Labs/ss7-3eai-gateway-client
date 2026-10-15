@@ -100,6 +100,7 @@ type Authentication struct {
 	EPSVectors  []EPSVector                `json:"eps_vectors,omitempty"`
 	UEUsageType string                     `json:"ue_usage_type,omitempty"` // 4 octets
 	Error       int32                      `json:"error,omitempty"`
+	ErrorCause  string                     `json:"error_cause,omitempty"` // a Cause* qualifying Error
 	Detail      string                     `json:"detail,omitempty"`
 }
 
@@ -154,6 +155,7 @@ type Purge struct {
 	FreezePTMSI bool   `json:"freeze_ptmsi,omitempty"`
 	FreezeMTMSI bool   `json:"freeze_mtmsi,omitempty"`
 	Error       int32  `json:"error,omitempty"`
+	ErrorCause  string `json:"error_cause,omitempty"` // a Cause* qualifying Error
 	Detail      string `json:"detail,omitempty"`
 }
 
@@ -184,6 +186,10 @@ type AuthenticationAnswer struct {
 	// errors: MAPErrSystemFailure, MAPErrDataMissing,
 	// MAPErrUnexpectedDataValue or MAPErrUnknownSubscriber.
 	Reject int32
+	// RejectCause qualifies a MAPErrUnknownSubscriber: CauseIMSIUnknown,
+	// or CauseGPRSEPSSubscriptionUnknown when an SGSN asks for a subscriber
+	// without GPRS. Optional.
+	RejectCause string
 }
 
 // ServeAuthentication makes the application the AuC behind the gateway's
@@ -218,7 +224,7 @@ func (c *Client) ServeAuthentication(queue string, handle func(ctx context.Conte
 			reply.Error, reply.Detail = MAPErrSystemFailure, err.Error()
 			c.reportServeError(m.Subject, err)
 		case answer.Reject != 0:
-			reply.Error = answer.Reject
+			reply.Error, reply.ErrorCause = answer.Reject, answer.RejectCause
 		default:
 			reply.Triplets, reply.Quintuplets, reply.EPSVectors = answer.Triplets, answer.Quintuplets, answer.EPSVectors
 			reply.UEUsageType = answer.UEUsageType
@@ -256,7 +262,13 @@ func (a *AuthenticationAnswer) check(req *Authentication) error {
 		if !authenticationRejectCodes[a.Reject] {
 			return fmt.Errorf("authentication answer: %d is not an error sendAuthenticationInfo allows", a.Reject)
 		}
+		if err := checkRejectCause(a.Reject, a.RejectCause); err != nil {
+			return fmt.Errorf("authentication answer: %w", err)
+		}
 		return nil
+	}
+	if a.RejectCause != "" {
+		return errors.New("authentication answer: RejectCause without Reject")
 	}
 	if len(a.Triplets) > 0 && len(a.Quintuplets) > 0 {
 		return errors.New("authentication answer: triplets and quintuplets, never both")
@@ -326,6 +338,9 @@ type PurgeAnswer struct {
 	// MAPErrDataMissing, MAPErrUnexpectedDataValue or
 	// MAPErrUnknownSubscriber.
 	Reject int32
+	// RejectCause qualifies a MAPErrUnknownSubscriber: CauseIMSIUnknown or
+	// CauseGPRSEPSSubscriptionUnknown. Optional.
+	RejectCause string
 }
 
 // ServePurges makes the application the HLR's subscriber records for
@@ -349,15 +364,16 @@ func (c *Client) ServePurges(queue string, handle func(ctx context.Context, r *P
 		defer cancel()
 		answer := handle(ctx, &PurgeRequest{DialogueID: p.DialogueID, IMSI: msg.IMSI, Request: p, NodeID: msg.NodeID, Raw: msg})
 		reply := &Purge{DialogueID: p.DialogueID}
+		causeErr := checkRejectCause(answer.Reject, answer.RejectCause)
 		switch {
-		case answer.Reject == 0:
+		case answer.Reject == 0 && answer.RejectCause == "":
 			reply.FreezeTMSI, reply.FreezePTMSI, reply.FreezeMTMSI = answer.FreezeTMSI, answer.FreezePTMSI, answer.FreezeMTMSI
-		case purgeRejectCodes[answer.Reject] && !answer.FreezeTMSI && !answer.FreezePTMSI && !answer.FreezeMTMSI:
-			reply.Error = answer.Reject
+		case purgeRejectCodes[answer.Reject] && causeErr == nil && !answer.FreezeTMSI && !answer.FreezePTMSI && !answer.FreezeMTMSI:
+			reply.Error, reply.ErrorCause = answer.Reject, answer.RejectCause
 		default:
 			// systemFailure, which purgeMS does not have: the gateway
 			// aborts the dialogue.
-			err := fmt.Errorf("purge answer: Reject %d is not an error purgeMS allows, or comes with freezes", answer.Reject)
+			err := fmt.Errorf("purge answer: Reject %d (cause %q) is not an error purgeMS allows, or comes with freezes", answer.Reject, answer.RejectCause)
 			reply.Error, reply.Detail = MAPErrSystemFailure, err.Error()
 			c.reportServeError(m.Subject, err)
 		}

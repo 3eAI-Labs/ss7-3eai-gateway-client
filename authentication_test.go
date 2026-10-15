@@ -51,14 +51,16 @@ func TestServeAuthentication(t *testing.T) {
 	answers := map[string]AuthenticationAnswer{
 		"vectors":       {Quintuplets: []AuthenticationQuintuplet{quintupletOf(1), quintupletOf(2)}, UEUsageType: "00000080"},
 		"empty":         {},
-		"refused":       {Reject: MAPErrUnknownSubscriber},
+		"refused":       {Reject: MAPErrUnknownSubscriber, RejectCause: CauseGPRSEPSSubscriptionUnknown},
+		"wrong cause":   {Reject: MAPErrUnknownSubscriber, RejectCause: CauseOperatorDeterminedBarring},
+		"lone cause":    {RejectCause: CauseIMSIUnknown},
 		"too many":      {Quintuplets: []AuthenticationQuintuplet{quintupletOf(1), quintupletOf(2), quintupletOf(3)}},
 		"both kinds":    {Quintuplets: []AuthenticationQuintuplet{quintupletOf(1)}, Triplets: []AuthenticationTriplet{{RAND: hexOf(1, 16), SRES: hexOf(1, 4), Kc: hexOf(1, 8)}}},
 		"short kc":      {Triplets: []AuthenticationTriplet{{RAND: hexOf(1, 16), SRES: hexOf(1, 4), Kc: hexOf(1, 7)}}},
 		"bad error":     {Reject: MAPErrRoamingNotAllowed},
 		"unasked usage": {UEUsageType: "00000080"},
 	}
-	requests := make(chan *AuthenticationRequest, 8)
+	requests := make(chan *AuthenticationRequest, 16)
 	sub, err := c.ServeAuthentication("auc", func(ctx context.Context, r *AuthenticationRequest) AuthenticationAnswer {
 		if _, ok := ctx.Deadline(); !ok {
 			t.Error("the handler's context has no deadline")
@@ -93,17 +95,17 @@ func TestServeAuthentication(t *testing.T) {
 	if a = ask("empty", false); a.Error != 0 || len(a.Triplets)+len(a.Quintuplets)+len(a.EPSVectors) != 0 {
 		t.Fatalf("empty answer %+v", a)
 	}
-	if a = ask("refused", false); a.Error != MAPErrUnknownSubscriber {
+	if a = ask("refused", false); a.Error != MAPErrUnknownSubscriber || a.ErrorCause != CauseGPRSEPSSubscriptionUnknown {
 		t.Fatalf("refused answer %+v", a)
 	}
-	for _, id := range []string{"too many", "both kinds", "short kc", "bad error", "unasked usage"} {
+	for _, id := range []string{"too many", "both kinds", "short kc", "bad error", "unasked usage", "wrong cause", "lone cause"} {
 		if a = ask(id, false); a.Error != MAPErrSystemFailure || a.Detail == "" || len(a.Quintuplets)+len(a.Triplets) != 0 {
 			t.Fatalf("%s: answer %+v, want systemFailure with the reason", id, a)
 		}
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(serveErrs) != 5 {
+	if len(serveErrs) != 7 {
 		t.Fatalf("serve errors %v, want one per bad answer", serveErrs)
 	}
 }
@@ -116,7 +118,9 @@ func TestServePurges(t *testing.T) {
 		case "286010000000123":
 			return PurgeAnswer{FreezeTMSI: r.Request.VLRNumber != nil}
 		case "286010000000999":
-			return PurgeAnswer{Reject: MAPErrUnknownSubscriber}
+			return PurgeAnswer{Reject: MAPErrUnknownSubscriber, RejectCause: CauseIMSIUnknown}
+		case "286010000000998":
+			return PurgeAnswer{Reject: MAPErrUnknownSubscriber, RejectCause: CausePLMNRoamingNotAllowed}
 		}
 		return PurgeAnswer{Reject: MAPErrSystemFailure} // not purgeMS's
 	})
@@ -135,8 +139,11 @@ func TestServePurges(t *testing.T) {
 	if p := purge("286010000000123"); !p.FreezeTMSI || p.Error != 0 {
 		t.Fatalf("purge %+v", p)
 	}
-	if p := purge("286010000000999"); p.Error != MAPErrUnknownSubscriber || p.FreezeTMSI {
+	if p := purge("286010000000999"); p.Error != MAPErrUnknownSubscriber || p.ErrorCause != CauseIMSIUnknown || p.FreezeTMSI {
 		t.Fatalf("purge %+v", p)
+	}
+	if p := purge("286010000000998"); p.Error != MAPErrSystemFailure || p.ErrorCause != "" || p.Detail == "" {
+		t.Fatalf("purge %+v: a cause that does not qualify the error is refused", p)
 	}
 	if p := purge("286010000000555"); p.Error != MAPErrSystemFailure || p.Detail == "" {
 		t.Fatalf("purge %+v: an error purgeMS does not have goes as systemFailure, which the gateway aborts on", p)

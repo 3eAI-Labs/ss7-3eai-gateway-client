@@ -6,6 +6,22 @@ versioning follows [SemVer](https://semver.org/) (pre-1.0: any 0.x change may be
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-15
+
+### Added
+
+- **`RejectCause`** on `AuthenticationAnswer`, `PurgeAnswer` and `LocationUpdateAnswer`, and
+  `ErrorCause` on the wire: what qualifies the error a request is refused with (TS 29.002 §7.6.1).
+  - unknownSubscriber's diagnostic, which it may go without: `CauseIMSIUnknown`, or
+    `CauseGPRSEPSSubscriptionUnknown` — TS 29.002 names the latter for a sendAuthenticationInfo
+    from an SGSN for a subscriber without GPRS.
+  - roamingNotAllowed's cause: `CausePLMNRoamingNotAllowed` (the default, also when none is
+    given), `CauseOperatorDeterminedBarring` or `CauseSupportedRATTypesNotAllowed`.
+  - A cause that does not qualify the answer's error is refused as a bad answer, as other bad
+    answers are: systemFailure for authentication and location updates, an abort for purging.
+  - A gateway before 0.7.10 ignores the field: the error goes without its cause. Needs gateway
+    0.7.10 or later for the cause to reach the network.
+
 ## [0.6.0] - 2026-10-15
 
 ### Added

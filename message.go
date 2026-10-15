@@ -3,7 +3,10 @@
 
 package ss7client
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // NATS subjects of the MAP SMS interface. The gateway queue-subscribes to the
 // request subjects (queue group = its cluster name) and publishes on the
@@ -173,6 +176,39 @@ const (
 	MAPErrDataMissing               int32 = 35
 	MAPErrUnexpectedDataValue       int32 = 36
 )
+
+// Causes that qualify an error the application refuses a request with
+// (TS 29.002 §7.6.1, MAP-ER-DataTypes): RejectCause in an answer,
+// ErrorCause on the wire.
+const (
+	// unknownSubscriber's diagnostic, which it may go without. TS 29.002
+	// names gprs-eps-subscription-unknown for a sendAuthenticationInfo from
+	// an SGSN for a subscriber without GPRS (figure 25.5/6).
+	CauseIMSIUnknown                = "imsi-unknown"
+	CauseGPRSEPSSubscriptionUnknown = "gprs-eps-subscription-unknown"
+	// roamingNotAllowed's cause, which it always carries: without one,
+	// plmn-roaming-not-allowed (TS 29.002 §8.1.2.3).
+	CausePLMNRoamingNotAllowed       = "plmn-roaming-not-allowed"
+	CauseOperatorDeterminedBarring   = "operator-determined-barring"
+	CauseSupportedRATTypesNotAllowed = "supported-rat-types-not-allowed"
+)
+
+// checkRejectCause reports whether cause may qualify the error code.
+func checkRejectCause(code int32, cause string) error {
+	switch cause {
+	case "":
+		return nil
+	case CauseIMSIUnknown, CauseGPRSEPSSubscriptionUnknown:
+		if code == MAPErrUnknownSubscriber {
+			return nil
+		}
+	case CausePLMNRoamingNotAllowed, CauseOperatorDeterminedBarring, CauseSupportedRATTypesNotAllowed:
+		if code == MAPErrRoamingNotAllowed {
+			return nil
+		}
+	}
+	return fmt.Errorf("reject cause %q does not qualify error %d", cause, code)
+}
 
 // AddressString is the object form of an address parameter. Nature and
 // NumberingPlan are the TS 29.002 AddressString nature-of-address and

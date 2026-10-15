@@ -125,6 +125,8 @@ type LocationUpdate struct {
 
 	// Error is the MAP error of a reject answer.
 	Error int32 `json:"error,omitempty"`
+	// ErrorCause qualifies Error: a Cause* constant.
+	ErrorCause string `json:"error_cause,omitempty"`
 	// Detail says why, in an end turn or in an insert_result turn that
 	// reports a failure.
 	Detail string `json:"detail,omitempty"`
@@ -358,6 +360,11 @@ type LocationUpdateAnswer struct {
 	// MAPErrDataMissing, MAPErrUnexpectedDataValue, MAPErrUnknownSubscriber
 	// or MAPErrRoamingNotAllowed.
 	Reject int32
+	// RejectCause qualifies the Reject: for MAPErrRoamingNotAllowed
+	// CausePLMNRoamingNotAllowed (the default), CauseOperatorDeterminedBarring
+	// or CauseSupportedRATTypesNotAllowed; for MAPErrUnknownSubscriber,
+	// optionally, CauseIMSIUnknown or CauseGPRSEPSSubscriptionUnknown.
+	RejectCause string
 }
 
 // ServeLocationUpdates makes the application the HLR's location management
@@ -434,6 +441,9 @@ func (c *Client) serveTurn(m *nats.Msg, msg *Message, handle func(context.Contex
 		LocationUpdate: &LocationUpdate{DialogueID: u.DialogueID},
 	}
 	switch {
+	case answer.RejectCause != "" && checkRejectCause(answer.Reject, answer.RejectCause) != nil:
+		reply.LocationUpdate.Action, reply.LocationUpdate.Error = ULReject, MAPErrSystemFailure
+		reply.LocationUpdate.Detail = checkRejectCause(answer.Reject, answer.RejectCause).Error()
 	case answer.Insert != nil && !answer.Accept && answer.Reject == 0:
 		if err := answer.Insert.validate("location update insert"); err != nil {
 			reply.LocationUpdate.Action, reply.LocationUpdate.Error = ULReject, MAPErrSystemFailure
@@ -445,6 +455,7 @@ func (c *Client) serveTurn(m *nats.Msg, msg *Message, handle func(context.Contex
 		reply.LocationUpdate.Action = ULAccept
 	case answer.Reject != 0 && answer.Insert == nil && !answer.Accept && updateLocationRejectCodes[answer.Reject]:
 		reply.LocationUpdate.Action, reply.LocationUpdate.Error = ULReject, answer.Reject
+		reply.LocationUpdate.ErrorCause = answer.RejectCause
 	default:
 		reply.LocationUpdate.Action, reply.LocationUpdate.Error = ULReject, MAPErrSystemFailure
 		reply.LocationUpdate.Detail = "the application's answer was not one Insert, Accept or Reject with an updateLocation error"

@@ -103,6 +103,14 @@ func TestServeLocationUpdates_BadAnswers(t *testing.T) {
 		"invalid data":              {LocationUpdateAnswer{Insert: &SubscriberData{Category: "0a0b"}}, MAPErrSystemFailure, "Category"},
 		"ODB without the status":    {LocationUpdateAnswer{Insert: &SubscriberData{ODB: &ODB{}}}, MAPErrSystemFailure, "ODB"},
 		"roamingNotAllowed is fine": {LocationUpdateAnswer{Reject: MAPErrRoamingNotAllowed}, MAPErrRoamingNotAllowed, ""},
+		"ODB is fine": {LocationUpdateAnswer{Reject: MAPErrRoamingNotAllowed, RejectCause: CauseOperatorDeterminedBarring},
+			MAPErrRoamingNotAllowed, ""},
+		"a cause of another error": {LocationUpdateAnswer{Reject: MAPErrRoamingNotAllowed, RejectCause: CauseIMSIUnknown},
+			MAPErrSystemFailure, "does not qualify"},
+		"an unknown cause": {LocationUpdateAnswer{Reject: MAPErrUnknownSubscriber, RejectCause: "imsi"},
+			MAPErrSystemFailure, "does not qualify"},
+		"a cause with an insert": {LocationUpdateAnswer{Insert: &SubscriberData{}, RejectCause: CauseIMSIUnknown},
+			MAPErrSystemFailure, "does not qualify"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			nc := startNATS(t)
@@ -116,6 +124,9 @@ func TestServeLocationUpdates_BadAnswers(t *testing.T) {
 			u := reply.LocationUpdate
 			if u.Action != ULReject || u.Error != tc.code || !strings.Contains(u.Detail, tc.detail) {
 				t.Fatalf("answer %+v", u)
+			}
+			if u.Error == tc.answer.Reject && u.ErrorCause != tc.answer.RejectCause {
+				t.Fatalf("cause %q, want %q", u.ErrorCause, tc.answer.RejectCause)
 			}
 		})
 	}
