@@ -108,6 +108,10 @@ var responseSubject = map[string]string{
 	SubjectRoutingRequest: SubjectRoutingResponse,
 	SubjectUSSDStart:      SubjectUSSDResponse,
 	SubjectUSSDCommand:    SubjectUSSDResponse,
+
+	SubjectCancelLocationRequest: SubjectCancelLocationResponse,
+	SubjectPRNRequest:            SubjectPRNResponse,
+	SubjectISDRequest:            SubjectISDResponse,
 }
 
 // subscribe makes sure the client receives subject. The server must have

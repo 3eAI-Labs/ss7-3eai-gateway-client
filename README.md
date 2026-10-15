@@ -13,7 +13,7 @@ go get github.com/3eAI-Labs/ss7-3eai-gateway-client
 ## What it covers
 
 The interfaces the gateway implements end to end — the MAP short-message path, subscriber
-location and state, and call routing:
+location and state, call routing, USSD, and location management with the gateway as HLR:
 
 | Operation | Method | Subjects |
 |-----------|--------|----------|
@@ -24,6 +24,10 @@ location and state, and call routing:
 | ProvideSubscriberInfo (MAP op 70), towards the VLR | `ProvideSubscriberInfo` | `map.psi.request` → `map.psi.response` |
 | SendRoutingInfo (MAP op 22), towards the HLR, as GMSC — gateway 0.7.6 and later | `SendRoutingInfo` | `map.routing.request` → `map.routing.response` |
 | USSD sessions (MAP ops 59, 60, 61), as gsmSCF — gateway 0.7.7 and later | `SubscribeUSSD`, `StartUSSD`, `USSDRequest`, `USSDNotify`, `USSDRelease`, `USSDReject` | events on `map.ussd.event.<route>`; `map.ussd.start` / `map.ussd.command` → `map.ussd.response` |
+| Location updates (MAP ops 2 and 7), as HLR: the application decides — gateway 0.7.8 and later | `ServeLocationUpdates` | `map.ul` (NATS requests, gateway → application) |
+| CancelLocation (MAP op 3), towards a VLR — gateway 0.7.8 and later | `CancelLocation` | `map.cl.request` → `map.cl.response` |
+| ProvideRoamingNumber (MAP op 4), towards a VLR — gateway 0.7.8 and later | `ProvideRoamingNumber` | `map.prn.request` → `map.prn.response` |
+| InsertSubscriberData (MAP op 7) alone, towards a VLR — gateway 0.7.8 and later | `InsertSubscriberData` | `map.isd.request` → `map.isd.response` |
 
 The package also defines the `Message` JSON schema, parameter keys, status values and the
 gateway's failure codes — the contract for consumers in other languages.
@@ -82,6 +86,25 @@ gw.SubscribeUSSD("balance", "balance-app", func(e *ss7client.USSDEvent) {
 		_ = gw.USSDRelease(ctx, e.SessionID, &ss7client.USSDText{Text: "You chose " + a.Reply.Text})
 	}()
 })
+
+// Location updates: the application is the HLR's location management.
+gw.ServeLocationUpdates("hlr", func(ctx context.Context, t *ss7client.LocationUpdateTurn) ss7client.LocationUpdateAnswer {
+	switch t.Action {
+	case ss7client.ULUpdateLocation: // a VLR registers t.IMSI
+		profile, ok := subscribers.Lookup(ctx, t.IMSI)
+		if !ok {
+			return ss7client.LocationUpdateAnswer{Reject: ss7client.MAPErrUnknownSubscriber}
+		}
+		return ss7client.LocationUpdateAnswer{Insert: profile} // *ss7client.SubscriberData
+	case ss7client.ULInsertResult: // t.Insert says what the VLR did not take, t.Status a failure
+		if t.Status != "" {
+			return ss7client.LocationUpdateAnswer{Reject: ss7client.MAPErrSystemFailure}
+		}
+		subscribers.Register(ctx, t.IMSI, t.Update.VLRNumber, t.Update.MSCNumber)
+		return ss7client.LocationUpdateAnswer{Accept: true}
+	}
+	return ss7client.LocationUpdateAnswer{} // ULEnd: t.Status says how it ended
+})
 ```
 
 ## Behaviour worth knowing
@@ -110,6 +133,9 @@ gw.SubscribeUSSD("balance", "balance-app", func(e *ss7client.USSDEvent) {
     - `map.ussd.start` (text on any handset, unasked);
     - `map.ussd.command` (acts on any live session whose ID it holds).
 
+    - `map.cl.request`, `map.prn.request`, `map.isd.request` (cancel any subscriber's
+      registration, take a roaming number to route their calls, change their profile in a VLR).
+
     The call routing subjects are outside `map.sri.*`, so granting SRI-for-SM does not grant them.
     A grant of `map.*.request` or `map.>` does.
   - Response and event subjects are broadcast. Subscribe rights show every answer, from every
@@ -120,6 +146,12 @@ gw.SubscribeUSSD("balance", "balance-app", func(e *ss7client.USSDEvent) {
     - `map.ussd.event.<route>` carries who dialled what.
 
     Grant each USSD route only to the application that serves it.
+  - Whoever subscribes to `map.ul` answers location updates: it is the HLR. Grant it to the HLR
+    application alone, with permission to publish its replies (NATS `allow_responses`); the
+    gateway needs to subscribe to its reply inboxes (`_INBOX.>`). Grant publish on `map.ul` to
+    the gateway alone: anyone who can publish there can send a forged turn and read the
+    profile the HLR application answers with. `map.ul` and
+    `map.isd.response` carry subscriber profiles, IMEISVs and the VLRs subscribers are in.
   - `WithDecodeErrorHandler` receives raw payloads, USSD text included.
   - A `Client` subscribes to an operation's response subject on its first request of that
     operation, so an account limited to some operations works.

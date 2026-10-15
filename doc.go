@@ -35,6 +35,12 @@
 //     through [Client.SubscribeUSSD]; [Client.StartUSSD] starts a
 //     network-initiated one; [Client.USSDRequest], [Client.USSDNotify],
 //     [Client.USSDRelease] and [Client.USSDReject] act on a session by its ID.
+//   - Location management with the gateway as HLR (gateway 0.7.8 and later):
+//     [Client.ServeLocationUpdates] answers the VLRs' updateLocation (op 2),
+//     turn by turn on [SubjectLocationUpdate], with insertSubscriberData
+//     (op 7) inside; [Client.CancelLocation] (op 3),
+//     [Client.ProvideRoamingNumber] (op 4) and [Client.InsertSubscriberData]
+//     (op 7) go to a VLR.
 //
 // # Wire model
 //
@@ -45,6 +51,9 @@
 // every client instance receives every response and keeps only its own, by
 // correlation_id. A [Client] subscribes to a response subject on the first
 // request that needs it.
+//
+// Location updates are the exception: the gateway asks and the application
+// answers, as NATS request and reply.
 //
 // A request the gateway refuses before starting a dialogue — a missing or
 // invalid field, no capacity for a new dialogue — is answered with

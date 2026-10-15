@@ -6,6 +6,41 @@ versioning follows [SemVer](https://semver.org/) (pre-1.0: any 0.x change may be
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-15
+
+### Added
+
+- Location management with the gateway as HLR (TS 29.002 §8.1, §8.8.1, §10.2); needs gateway
+  0.7.8 or later. The application is the HLR's location management (TS 23.012), the gateway
+  speaks MAP to the VLRs.
+  - **Location updates:** `ServeLocationUpdates` answers a VLR's updateLocation on `map.ul`,
+    turn by turn, as NATS request and reply — the MAP process in the HLR asks the application at
+    each decision (TS 29.002 figure 19.1.1/13).
+    - The turn `update_location` carries what the VLR sent: MSC and VLR numbers, LMSI, VLR
+      capability, IMEISV, the calling GT.
+    - The answer inserts subscriber data, accepts (updateLocation's result, with the gateway's
+      HLR number) or rejects with one of updateLocation's errors.
+    - After an insert, the turn `insert_result` says what the VLR did not take, or why the data
+      failed; the application answers again.
+    - A location update the gateway does not end with the application's accept or reject gets
+      exactly one `end` turn, which is not answered: the VLR or the network ended it, the gateway
+      refused it on its own account (no answer by `answer_by`, an answer it cannot carry out),
+      or the answer could not be sent. The end comes after the turn in flight; an end after an
+      answer means the answer was not carried out.
+    - Each turn runs on its own goroutine with a context ending at the turn's `answer_by`.
+  - **`SubscriberData`:** the circuit-switched profile — MSISDN, category, status, bearer and
+    teleservices, call forwarding, call barring, other SS data, ODB, regional subscription,
+    network access mode, access restriction. Codes are hex and names the ASN.1 value names.
+    It is checked before it is sent. CUG, eMLPP, VBS/VGCS and CAMEL subscription data are not
+    carried.
+  - **Requests to a VLR** (named by `ParamVLRNumber`, as for ProvideSubscriberInfo):
+    `CancelLocation` (`map.cl.*`), `ProvideRoamingNumber` (`map.prn.*`, the roaming number and
+    VMSC address back) and `InsertSubscriberData` (`map.isd.*`, stand-alone).
+  - `Message` fields `location_update`, `subscriber_data`, `insert_result`, `cancel_location`,
+    `roaming_number_enquiry`.
+  - MAP error codes `MAPErrRoamingNotAllowed` (8), `MAPErrNoRoamingNumberAvailable` (39).
+  - The name tables in bit or value order (`ODBGeneralNames`, `RATTypeNames`, …).
+
 ## [0.4.0] - 2026-10-15
 
 ### Added

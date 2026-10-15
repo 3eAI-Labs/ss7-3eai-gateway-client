@@ -82,6 +82,17 @@ type Message struct {
 	// USSD (map.ussd.*): the session, the action, and the text.
 	USSD *USSD `json:"ussd,omitempty"`
 
+	// Location management with the gateway as HLR: a location update's
+	// turn or answer (map.ul); the subscriber data of an insert (map.ul
+	// answer, map.isd.request) and the VLR's answer to it (map.ul turn,
+	// map.isd.response); cancelLocation's and provideRoamingNumber's fields
+	// (map.cl.*, map.prn.*).
+	LocationUpdate       *LocationUpdate       `json:"location_update,omitempty"`
+	SubscriberData       *SubscriberData       `json:"subscriber_data,omitempty"`
+	InsertResult         *InsertResult         `json:"insert_result,omitempty"`
+	CancelLocation       *CancelLocation       `json:"cancel_location,omitempty"`
+	RoamingNumberEnquiry *RoamingNumberEnquiry `json:"roaming_number_enquiry,omitempty"`
+
 	Status       string `json:"status,omitempty"`
 	ErrorCode    int32  `json:"error_code,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`
