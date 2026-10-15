@@ -13,7 +13,8 @@ go get github.com/3eAI-Labs/ss7-3eai-gateway-client
 ## What it covers
 
 The interfaces the gateway implements end to end — the MAP short-message path, subscriber
-location and state, call routing, USSD, and location management with the gateway as HLR:
+location and state, call routing, USSD, and location management, authentication and purging
+with the gateway as HLR:
 
 | Operation | Method | Subjects |
 |-----------|--------|----------|
@@ -28,6 +29,8 @@ location and state, call routing, USSD, and location management with the gateway
 | CancelLocation (MAP op 3), towards a VLR — gateway 0.7.8 and later | `CancelLocation` | `map.cl.request` → `map.cl.response` |
 | ProvideRoamingNumber (MAP op 4), towards a VLR — gateway 0.7.8 and later | `ProvideRoamingNumber` | `map.prn.request` → `map.prn.response` |
 | InsertSubscriberData (MAP op 7) alone, towards a VLR — gateway 0.7.8 and later | `InsertSubscriberData` | `map.isd.request` → `map.isd.response` |
+| SendAuthenticationInfo (MAP op 56), as HLR: the application is the AuC — gateway 0.7.9 and later | `ServeAuthentication` | `map.sai` (NATS requests, gateway → application) |
+| PurgeMS (MAP op 67), as HLR — gateway 0.7.9 and later | `ServePurges` | `map.purge` (NATS requests, gateway → application) |
 
 The package also defines the `Message` JSON schema, parameter keys, status values and the
 gateway's failure codes — the contract for consumers in other languages.
@@ -152,6 +155,10 @@ gw.ServeLocationUpdates("hlr", func(ctx context.Context, t *ss7client.LocationUp
     the gateway alone: anyone who can publish there can send a forged turn and read the
     profile the HLR application answers with. `map.ul` and
     `map.isd.response` carry subscriber profiles, IMEISVs and the VLRs subscribers are in.
+  - `map.sai` carries authentication vectors: key material (Kc, CK, IK, KASME). Grant subscribe
+    to the AuC alone and publish to the gateway alone, as for `map.ul`, and run NATS with TLS.
+    Grant publish on `map.purge` to the gateway alone: a forged purge makes a subscriber
+    unreachable.
   - `WithDecodeErrorHandler` receives raw payloads, USSD text included.
   - A `Client` subscribes to an operation's response subject on its first request of that
     operation, so an account limited to some operations works.

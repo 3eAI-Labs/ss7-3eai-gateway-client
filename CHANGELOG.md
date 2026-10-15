@@ -6,6 +6,27 @@ versioning follows [SemVer](https://semver.org/) (pre-1.0: any 0.x change may be
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-15
+
+### Added
+
+- Authentication and MS purging with the gateway as HLR (TS 29.002 §8.5.2, §8.1.6); needs gateway
+  0.7.9 or later.
+  - **`ServeAuthentication`** answers a VLR's or SGSN's sendAuthenticationInfo on `map.sai`, as
+    NATS request and reply: the application is the AuC. The request carries the number of
+    vectors wanted, the requesting node type and PLMN, re-synchronisation data (RAND, AUTS), and
+    the EPS and UE usage type indications (`RequestingNodeType` empty when the request has
+    none); the answer is triplets, quintuplets or EPS vectors
+    (hex), the UE usage type, or `Reject` with one of the operation's errors. No vectors is the
+    empty result. `Authentication.VectorLimits` gives how many of each kind the request allows.
+    An answer that breaks the rules (both triplets and quintuplets, more vectors of a kind than
+    allowed, a wrong length) is sent as systemFailure and reported to the decode error
+    handler.
+  - **`ServePurges`** answers purgeMS on `map.purge`: freeze TMSI / P-TMSI / M-TMSI, or `Reject`
+    with dataMissing, unexpectedDataValue or unknownSubscriber.
+  - `Message` fields `authentication` and `purge`; message types `MAP_SAI`, `MAP_PURGE`;
+    `Node*` requesting node type names.
+
 ## [0.5.0] - 2026-10-15
 
 ### Added

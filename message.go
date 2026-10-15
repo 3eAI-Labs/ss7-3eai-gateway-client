@@ -93,6 +93,12 @@ type Message struct {
 	CancelLocation       *CancelLocation       `json:"cancel_location,omitempty"`
 	RoamingNumberEnquiry *RoamingNumberEnquiry `json:"roaming_number_enquiry,omitempty"`
 
+	// Authentication and MS purging with the gateway as HLR: a
+	// sendAuthenticationInfo or purgeMS and the application's answer
+	// (map.sai, map.purge).
+	Authentication *Authentication `json:"authentication,omitempty"`
+	Purge          *Purge          `json:"purge,omitempty"`
+
 	Status       string `json:"status,omitempty"`
 	ErrorCode    int32  `json:"error_code,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`

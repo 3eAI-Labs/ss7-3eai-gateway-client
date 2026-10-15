@@ -41,6 +41,10 @@
 //     (op 7) inside; [Client.CancelLocation] (op 3),
 //     [Client.ProvideRoamingNumber] (op 4) and [Client.InsertSubscriberData]
 //     (op 7) go to a VLR.
+//   - Authentication and MS purging with the gateway as HLR (gateway 0.7.9
+//     and later): [Client.ServeAuthentication] answers sendAuthenticationInfo
+//     (op 56) on [SubjectAuthentication], the application as AuC;
+//     [Client.ServePurges] answers purgeMS (op 67) on [SubjectPurge].
 //
 // # Wire model
 //
@@ -52,8 +56,8 @@
 // correlation_id. A [Client] subscribes to a response subject on the first
 // request that needs it.
 //
-// Location updates are the exception: the gateway asks and the application
-// answers, as NATS request and reply.
+// Location updates, authentication and purging are the exception: the
+// gateway asks and the application answers, as NATS request and reply.
 //
 // A request the gateway refuses before starting a dialogue — a missing or
 // invalid field, no capacity for a new dialogue — is answered with
